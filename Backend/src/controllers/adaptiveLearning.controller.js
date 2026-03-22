@@ -8,6 +8,7 @@ import {
   updateUserPerformance,
   analyzeUserPerformance,
   getAdaptiveRecommendation,
+  getAdaptiveNextQuestion,
   startImportQuestionsFromDocumentFolderJob,
   getImportJobStatus,
   getQuestionCatalogSummary
@@ -76,7 +77,11 @@ export const getPracticeQuestions = asyncHandler(async (req, res) => {
     limit: 5
   });
 
-  res.json({ count: questions.length, questions });
+  // Enrich questions with generated options if needed
+  const { enrichMultipleQuestions } = await import("../services/questionEnrichment.service.js");
+  const enrichedQuestions = await enrichMultipleQuestions(questions);
+
+  res.json({ count: enrichedQuestions.length, questions: enrichedQuestions });
 });
 
 export const getQuestionCatalog = asyncHandler(async (req, res) => {
@@ -132,5 +137,59 @@ export const getAdaptiveQuestions = asyncHandler(async (req, res) => {
     topic: String(topic)
   });
 
+  // Enrich questions with generated options if needed
+  if (recommendation.questions && recommendation.questions.length > 0) {
+    const { enrichMultipleQuestions } = await import("../services/questionEnrichment.service.js");
+    recommendation.questions = await enrichMultipleQuestions(recommendation.questions);
+  }
+
   res.json(recommendation);
+});
+
+export const getNextAdaptiveQuestion = asyncHandler(async (req, res) => {
+  const subject = req.query.subject ? String(req.query.subject).trim() : "";
+  if (!subject) {
+    res.status(400);
+    throw new Error("subject is required");
+  }
+
+  const adaptiveResult = await getAdaptiveNextQuestion({
+    userId: String(req.user._id),
+    subject
+  });
+
+  // Enrich question with generated options if needed
+  if (adaptiveResult.question) {
+    const { enrichQuestionWithGeneratedOptions } = await import("../services/questionEnrichment.service.js");
+    adaptiveResult.question = await enrichQuestionWithGeneratedOptions(adaptiveResult.question);
+  }
+
+  res.json(adaptiveResult);
+});
+
+export const submitAdaptiveAttempt = asyncHandler(async (req, res) => {
+  const { questionId, selectedAnswer, isCorrect } = req.body;
+
+  if (!questionId || !mongoose.Types.ObjectId.isValid(String(questionId))) {
+    res.status(400);
+    throw new Error("Valid questionId is required");
+  }
+
+  if (typeof selectedAnswer === "undefined" && typeof isCorrect !== "boolean") {
+    res.status(400);
+    throw new Error("selectedAnswer or isCorrect is required");
+  }
+
+  const result = await updateUserPerformance({
+    userId: String(req.user._id),
+    submissions: [
+      {
+        questionId: String(questionId),
+        selectedAnswer,
+        isCorrect
+      }
+    ]
+  });
+
+  res.json(result);
 });

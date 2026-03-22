@@ -4,7 +4,9 @@ import crypto from "crypto";
 import { askAI } from "./ai.service.js";
 import Question from "../models/Question.js";
 import UserPerformance from "../models/UserPerformance.js";
+import UserAttempt from "../models/UserAttempt.js";
 import { extractQuestionsFromPdf } from "./questionExtraction.service.js";
+import { enrichQuestionWithGeneratedOptions } from "./questionEnrichment.service.js";
 
 const SUBJECTS = ["Physics", "Chemistry", "Math"];
 const DIFFICULTIES = ["Easy", "Medium", "Hard"];
@@ -515,6 +517,239 @@ export const fetchPracticeQuestions = async ({ topicOrSubject, difficulty, limit
   return questions;
 };
 
+const normalizeSubjectInput = (subject) => {
+  const normalized = normalizeSubject(subject);
+  return normalized || String(subject || "").trim();
+};
+
+const buildDifficultyOrder = (targetDifficulty) => {
+  const safeDifficulty = normalizeDifficulty(targetDifficulty);
+  const currentIndex = DIFFICULTIES.indexOf(safeDifficulty);
+  if (currentIndex < 0) return [...DIFFICULTIES];
+
+  const others = DIFFICULTIES.filter((item) => item !== safeDifficulty).sort((a, b) => {
+    const distanceA = Math.abs(DIFFICULTIES.indexOf(a) - currentIndex);
+    const distanceB = Math.abs(DIFFICULTIES.indexOf(b) - currentIndex);
+    return distanceA - distanceB;
+  });
+
+  return [safeDifficulty, ...others];
+};
+
+const getRecommendedDifficulty = (accuracy) => {
+  if (accuracy < 40) return "Easy";
+  if (accuracy <= 70) return "Medium";
+  return "Hard";
+};
+
+const pickRandom = (items) => {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  return items[Math.floor(Math.random() * items.length)] || null;
+};
+
+const pickWeightedTopic = (topicItems) => {
+  if (!topicItems.length) return null;
+
+  const weighted = topicItems.map((item, index) => ({
+    ...item,
+    weight: Math.max(0.05, 1 - index * 0.3)
+  }));
+
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
+  let cursor = Math.random() * totalWeight;
+
+  for (const item of weighted) {
+    cursor -= item.weight;
+    if (cursor <= 0) return item;
+  }
+
+  return weighted[weighted.length - 1] || null;
+};
+
+const findRandomQuestion = async ({ subject, topic, difficulty, excludedQuestionIds = [] }) => {
+  const match = { isValid: true };
+
+  if (subject) {
+    match.subject = new RegExp(`^${escapeRegex(String(subject).trim())}$`, "i");
+  }
+
+  if (topic) {
+    match.topic = new RegExp(`^${escapeRegex(String(topic).trim())}$`, "i");
+  }
+
+  if (difficulty) {
+    match.difficulty = new RegExp(`^${escapeRegex(String(difficulty).trim())}$`, "i");
+  }
+
+  if (excludedQuestionIds.length > 0) {
+    match._id = { $nin: excludedQuestionIds };
+  }
+
+  const [question] = await Question.aggregate([
+    { $match: match },
+    { $sample: { size: 1 } },
+    { $project: { correctAnswer: 0, answer: 0 } }
+  ]);
+
+  if (!question) return null;
+
+  // Enrich question with generated options if missing
+  const enriched = await enrichQuestionWithGeneratedOptions(question);
+  return enriched;
+};
+
+const getTopicSelection = async ({ userId, subject }) => {
+  const availableTopics = await Question.distinct("topic", {
+    isValid: true,
+    subject: new RegExp(`^${escapeRegex(subject)}$`, "i")
+  });
+
+  if (availableTopics.length === 0) {
+    return { selectedTopic: null, accuracy: 0, topicStats: [] };
+  }
+
+  const performance = await UserPerformance.find({ userId, subject }).lean();
+  if (performance.length === 0) {
+    return {
+      selectedTopic: pickRandom(availableTopics),
+      accuracy: 50,
+      topicStats: []
+    };
+  }
+
+  const now = Date.now();
+  const scored = performance
+    .map((item) => {
+      const lastAttemptedAt = item.lastAttemptedAt ? new Date(item.lastAttemptedAt).getTime() : 0;
+      const hoursSince = lastAttemptedAt ? (now - lastAttemptedAt) / (1000 * 60 * 60) : 999;
+      const recentWeaknessBoost = Math.max(0, 12 - hoursSince) * 0.6;
+      const score = Number(item.accuracy || 0) - recentWeaknessBoost;
+
+      return {
+        topic: item.topic,
+        accuracy: Number(item.accuracy || 0),
+        totalAttempts: Number(item.totalAttempts || 0),
+        score,
+        lastAttemptedAt: item.lastAttemptedAt || null
+      };
+    })
+    .sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.accuracy !== b.accuracy) return a.accuracy - b.accuracy;
+      return (b.totalAttempts || 0) - (a.totalAttempts || 0);
+    });
+
+  const weakestBucket = scored.slice(0, Math.min(3, scored.length));
+  const mixTopics = Math.random() < 0.2;
+
+  if (mixTopics) {
+    return {
+      selectedTopic: pickRandom(availableTopics),
+      accuracy: 50,
+      topicStats: scored
+    };
+  }
+
+  const selected = pickWeightedTopic(weakestBucket) || weakestBucket[0];
+
+  return {
+    selectedTopic: selected?.topic || pickRandom(availableTopics),
+    accuracy: selected?.accuracy ?? 50,
+    topicStats: scored
+  };
+};
+
+const getCurrentStreak = async ({ userId, subject }) => {
+  const recentAttempts = await UserAttempt.find({ userId, subject })
+    .sort({ attemptedAt: -1 })
+    .limit(30)
+    .lean();
+
+  let streak = 0;
+  for (const attempt of recentAttempts) {
+    if (!attempt.isCorrect) break;
+    streak += 1;
+  }
+
+  return streak;
+};
+
+export const getAdaptiveNextQuestion = async ({ userId, subject }) => {
+  const normalizedSubject = normalizeSubjectInput(subject);
+  if (!normalizedSubject) {
+    throw new Error("subject is required");
+  }
+
+  const excludedQuestionIds = await UserAttempt.distinct("questionId", {
+    userId,
+    subject: normalizedSubject
+  });
+
+  const { selectedTopic, accuracy, topicStats } = await getTopicSelection({
+    userId,
+    subject: normalizedSubject
+  });
+
+  const recommendedDifficulty = getRecommendedDifficulty(accuracy);
+  const difficultyOrder = buildDifficultyOrder(recommendedDifficulty);
+
+  let question = null;
+
+  for (const difficulty of difficultyOrder) {
+    question = await findRandomQuestion({
+      subject: normalizedSubject,
+      topic: selectedTopic,
+      difficulty,
+      excludedQuestionIds
+    });
+    if (question) break;
+  }
+
+  if (!question) {
+    question = await findRandomQuestion({
+      subject: normalizedSubject,
+      topic: selectedTopic,
+      excludedQuestionIds
+    });
+  }
+
+  if (!question) {
+    for (const difficulty of difficultyOrder) {
+      question = await findRandomQuestion({
+        subject: normalizedSubject,
+        difficulty,
+        excludedQuestionIds
+      });
+      if (question) break;
+    }
+  }
+
+  if (!question) {
+    question = await findRandomQuestion({
+      subject: normalizedSubject,
+      excludedQuestionIds
+    });
+  }
+
+  const currentStreak = await getCurrentStreak({ userId, subject: normalizedSubject });
+  const confidenceScore = Number(Math.min(100, Math.max(5, accuracy + currentStreak * 2)).toFixed(2));
+
+  return {
+    subject: normalizedSubject,
+    topic: selectedTopic,
+    recommendedDifficulty,
+    question: question || null,
+    weakestTopics: topicStats.slice(0, 3).map((item) => ({
+      topic: item.topic,
+      accuracy: item.accuracy,
+      totalAttempts: item.totalAttempts,
+      lastAttemptedAt: item.lastAttemptedAt
+    })),
+    currentStreak,
+    confidenceScore
+  };
+};
+
 export const getQuestionCatalogSummary = async () => {
   const [totalQuestions, totalValid, bySubjectRaw, byDifficultyRaw, byTypeRaw, topTopicsRaw] = await Promise.all([
     Question.countDocuments(),
@@ -568,19 +803,28 @@ export const updateUserPerformance = async ({ userId, submissions }) => {
       if (!question) return null;
 
       let isCorrect = false;
-      
-      // Handle both MCQ and Numerical/ShortAnswer
+
       if (question.questionType === "MCQ") {
-        isCorrect = String(submission.selectedAnswer).toUpperCase() === question.correctAnswer;
+        if (typeof submission.selectedAnswer !== "undefined") {
+          isCorrect = String(submission.selectedAnswer).toUpperCase() === question.correctAnswer;
+        } else {
+          isCorrect = Boolean(submission.isCorrect);
+        }
       } else {
-        // For numerical answers, do case-insensitive comparison
-        isCorrect = String(submission.selectedAnswer).toLowerCase().trim() === 
-                   String(question.answer || "").toLowerCase().trim();
+        if (typeof submission.selectedAnswer !== "undefined") {
+          isCorrect =
+            String(submission.selectedAnswer).toLowerCase().trim() ===
+            String(question.answer || "").toLowerCase().trim();
+        } else {
+          isCorrect = Boolean(submission.isCorrect);
+        }
       }
 
       return {
         questionId: String(submission.questionId),
+        subject: question.subject,
         topic: question.topic,
+        difficulty: question.difficulty,
         selectedAnswer: submission.selectedAnswer,
         correctAnswer: question.questionType === "MCQ" ? question.correctAnswer : question.answer,
         isCorrect,
@@ -589,30 +833,50 @@ export const updateUserPerformance = async ({ userId, submissions }) => {
     })
     .filter(Boolean);
 
-  const topicStats = new Map();
+  const updatesMap = new Map();
+  const attemptedAt = new Date();
 
-  evaluatedSubmissions.forEach((submission) => {
-    const existing = topicStats.get(submission.topic) || { total: 0, correct: 0 };
-    existing.total += 1;
-    existing.correct += submission.isCorrect ? 1 : 0;
-    topicStats.set(submission.topic, existing);
-  });
-
-  const updates = [];
-
-  for (const [topic, stat] of topicStats.entries()) {
-    const current = await UserPerformance.findOne({ userId, topic });
-    const totalQuestions = (current?.totalQuestions || 0) + stat.total;
-    const correctAnswers = (current?.correctAnswers || 0) + stat.correct;
-    const accuracy = totalQuestions > 0 ? Number(((correctAnswers / totalQuestions) * 100).toFixed(2)) : 0;
+  for (const submission of evaluatedSubmissions) {
+    await UserAttempt.create({
+      userId,
+      questionId: submission.questionId,
+      subject: submission.subject,
+      topic: submission.topic,
+      difficulty: submission.difficulty,
+      selectedAnswer: String(submission.selectedAnswer ?? ""),
+      isCorrect: submission.isCorrect,
+      attemptedAt
+    });
 
     const updated = await UserPerformance.findOneAndUpdate(
-      { userId, topic },
-      { totalQuestions, correctAnswers, accuracy },
-      { upsert: true, new: true }
-    ).lean();
+      {
+        userId,
+        subject: submission.subject,
+        topic: submission.topic
+      },
+      {
+        $inc: {
+          totalAttempts: 1,
+          correctAnswers: submission.isCorrect ? 1 : 0,
+          wrongAnswers: submission.isCorrect ? 0 : 1
+        },
+        $set: {
+          lastAttemptedAt: attemptedAt
+        }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    updates.push(updated);
+    const totalAttempts = Number(updated.totalAttempts || 0);
+    const correctAnswers = Number(updated.correctAnswers || 0);
+    const accuracy = totalAttempts > 0 ? Number(((correctAnswers / totalAttempts) * 100).toFixed(2)) : 0;
+
+    if (Number(updated.accuracy || 0) !== accuracy) {
+      updated.accuracy = accuracy;
+      await updated.save();
+    }
+
+    updatesMap.set(`${updated.subject}::${updated.topic}`, updated.toObject());
   }
 
   const score = evaluatedSubmissions.reduce((acc, item) => acc + (item.isCorrect ? 1 : 0), 0);
@@ -621,39 +885,29 @@ export const updateUserPerformance = async ({ userId, submissions }) => {
     score,
     totalAttempted: evaluatedSubmissions.length,
     evaluatedSubmissions,
-    updatedPerformance: updates
+    updatedPerformance: Array.from(updatesMap.values())
   };
 };
 
 export const analyzeUserPerformance = async (userId) => {
-  const performance = await UserPerformance.find({ userId }).sort({ accuracy: 1 }).lean();
-  const weakTopics = performance.filter((item) => item.accuracy < 50).map((item) => item.topic);
+  const performance = await UserPerformance.find({ userId }).sort({ accuracy: 1, lastAttemptedAt: -1 }).lean();
+  const weakTopics = performance.filter((item) => Number(item.accuracy || 0) <= 70).map((item) => item.topic);
 
   return { performance, weakTopics };
 };
 
-export const getRecommendedDifficulty = (accuracy) => {
-  if (accuracy < 50) return "Easy";
-  if (accuracy <= 75) return "Medium";
-  return "Hard";
-};
-
 export const getAdaptiveRecommendation = async ({ userId, topic }) => {
-  const existing = await UserPerformance.findOne({ userId, topic }).lean();
-  const recommendedDifficulty = getRecommendedDifficulty(existing?.accuracy ?? 0);
+  const recommendedDifficulty = await getAdaptiveNextQuestion({ userId, subject: topic });
 
-  const questions = await fetchPracticeQuestions({
-    topicOrSubject: topic,
-    difficulty: recommendedDifficulty,
-    limit: 5,
-    includeAnswers: false
-  });
+  const questions = recommendedDifficulty.question ? [recommendedDifficulty.question] : [];
 
   return {
-    topic,
-    accuracy: existing?.accuracy ?? 0,
-    recommendedDifficulty,
-    questions
+    topic: recommendedDifficulty.topic || topic,
+    accuracy: recommendedDifficulty.confidenceScore,
+    recommendedDifficulty: recommendedDifficulty.recommendedDifficulty,
+    questions,
+    weakestTopics: recommendedDifficulty.weakestTopics,
+    currentStreak: recommendedDifficulty.currentStreak
   };
 };
 
