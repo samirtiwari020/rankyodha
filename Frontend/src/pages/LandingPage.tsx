@@ -205,7 +205,7 @@ const testimonials = [
   {
     name: "Arjun Singh",
     exam: "JEE Mains 2024 - Qualified",
-    quote: "NeuroPrep's AI completely changed how I study. In 3 months, I went from 65% to 92% in my mock tests!",
+    quote: "RankYodha's AI completely changed how I study. In 3 months, I went from 65% to 92% in my mock tests!",
     avatar: "🧑‍🎓",
     color: "from-cyan-500 to-blue-500",
   },
@@ -253,7 +253,7 @@ export default function LandingPage() {
               <Brain className="h-5 w-5 text-white" />
             </div>
             <span className="text-lg font-bold gradient-text hidden sm:inline">
-              NeuroPrep AI
+              RankYodha
             </span>
           </button>
 
@@ -379,9 +379,9 @@ export default function LandingPage() {
               className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-tight tracking-tight"
             >
               Your Personal{" "}
-              <span className="gradient-text">AI Study</span>
+              <span className="gradient-text">RankYodha</span>
               <br />
-              <span className="gradient-text">Companion</span>
+              <span className="gradient-text">AI Mentor</span>
             </motion.h1>
 
             {/* Subheading */}
@@ -472,7 +472,7 @@ export default function LandingPage() {
               custom={0}
               className="inline-block text-xs font-semibold tracking-widest uppercase text-primary mb-3"
             >
-              Why NeuroPrep?
+              Why RankYodha?
             </motion.span>
             <motion.h2
               variants={fadeUp}
@@ -1005,9 +1005,9 @@ export default function LandingPage() {
             <div className="h-7 w-7 rounded-md gradient-primary flex items-center justify-center">
               <Brain className="h-4 w-4 text-white" />
             </div>
-            <span className="font-semibold text-foreground">NeuroPrep AI</span>
+            <span className="font-semibold text-foreground">RankYodha</span>
           </div>
-          <p>&copy; {new Date().getFullYear()} NeuroPrep AI. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} RankYodha. All rights reserved.</p>
           <div className="flex gap-5">
             <a href="#" className="hover:text-foreground transition-colors">
               Privacy

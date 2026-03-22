@@ -18,6 +18,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/api";
+import { useCourse } from "@/contexts/CourseContext";
+import { getCourseData, getCourseColorScheme } from "@/utils/courseData";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -27,9 +29,6 @@ const stagger: Variants = {
   hidden: { opacity: 0 },
   show: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0 } },
 };
-
-const topics = ["Physics", "Chemistry", "Mathematics", "Biology", "History", "Economy", "Polity"];
-const difficulties = ["Easy", "Medium", "Hard"];
 
 interface QuestionData {
   id?: string;
@@ -59,6 +58,13 @@ interface PracticeApiQuestion {
 interface AdaptivePracticeResponse {
   count: number;
   questions: PracticeApiQuestion[];
+}
+
+interface AdaptiveNextQuestionResponse {
+  subject: string;
+  topic: string | null;
+  recommendedDifficulty: "Easy" | "Medium" | "Hard";
+  question: PracticeApiQuestion | null;
 }
 
 interface AdaptiveSubmitResponse {
@@ -134,9 +140,17 @@ const parseQuestionText = (rawQuestion: string, apiOptions?: string[]) => {
 };
 
 export default function Practice() {
+  const { selectedCourse } = useCourse();
+  const courseData = getCourseData(selectedCourse);
+  const courseColors = getCourseColorScheme(selectedCourse);
+  
+  // Use course-specific subjects or default topics
+  const topics = courseData.subjects;
+  const difficulties = ["Easy", "Medium", "Hard"];
+  
   const [stage, setStage] = useState<"select" | "quiz" | "evaluation">("select");
   const [selectedTopic, setSelectedTopic] = useState("");
-  const [selectedDifficulty, setSelectedDifficulty] = useState("");
+  const [selectedDifficulty, setSelectedDifficulty] = useState<"Easy" | "Medium" | "Hard">("Medium");
 
   // Quiz State
   const [loading, setLoading] = useState(false);
@@ -218,19 +232,20 @@ export default function Practice() {
 
     try {
       const requestTopic = selectedTopic === "Mathematics" ? "Math" : selectedTopic;
-      const data = await apiRequest<AdaptivePracticeResponse>(
-        `/api/v1/adaptive-learning/practice?topic=${encodeURIComponent(requestTopic)}&difficulty=${encodeURIComponent(selectedDifficulty)}`,
+      const data = await apiRequest<AdaptiveNextQuestionResponse>(
+        `/api/v1/adaptive-learning/next?subject=${encodeURIComponent(requestTopic)}`,
         { method: "GET" },
         true
       );
 
-      const normalized = (Array.isArray(data.questions) ? data.questions : []).map(normalizeQuestion);
+      const normalized = data.question ? [normalizeQuestion(data.question)] : [];
 
       if (normalized.length === 0) {
-        throw new Error("No questions found for this topic and difficulty. Import your question bank first.");
+        throw new Error("No adaptive question found for this subject. Import your question bank first.");
       }
 
       setQuestions(normalized);
+      setSelectedDifficulty(data.recommendedDifficulty || "Medium");
 
       setTimeElapsed(0);
       setRevealedHints(0);
@@ -246,7 +261,7 @@ export default function Practice() {
   };
 
   const startQuiz = () => {
-    if (selectedTopic && selectedDifficulty) {
+    if (selectedTopic) {
       fetchQuestions();
     }
   };
@@ -346,16 +361,16 @@ export default function Practice() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-8 pb-12">
       {/* Hero Command Center */}
-      <motion.div variants={fadeUp} className="relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/15 via-lime-500/5 to-transparent p-8 md:p-12">
+      <motion.div variants={fadeUp} className={`relative overflow-hidden rounded-3xl border ${courseColors.border} bg-gradient-to-br ${courseColors.bg} p-8 md:p-12`}>
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-gradient-to-br from-cyan-500 to-lime-500 opacity-10 blur-3xl" />
         <div className="absolute -left-32 -bottom-32 h-64 w-64 rounded-full bg-cyan-500 opacity-5 blur-3xl" />
         <div className="relative z-10 max-w-2xl">
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className="inline-flex items-center gap-2 mb-3 px-3 py-1 rounded-full bg-gradient-to-r from-cyan-500/30 to-lime-500/30 border border-cyan-500/50">
-            <Zap className="h-4 w-4 text-cyan-400" />
-            <span className="text-xs font-bold text-cyan-300 uppercase tracking-widest">Practice Mode</span>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }} className={`inline-flex items-center gap-2 mb-3 px-3 py-1 rounded-full ${courseColors.badge}`}>
+            <Zap className="h-4 w-4" />
+            <span className="text-xs font-bold uppercase tracking-widest">{courseData.name} - Practice</span>
           </motion.div>
-          <h1 className="text-4xl md:text-5xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-lime-400 to-green-400">Master Your Skills</h1>
-          <p className="text-lg text-foreground/70 leading-relaxed">Select a topic and difficulty level to generate personalized practice questions. Perfect your answers for +4 marks or use hints for guidance.</p>
+          <h1 className="text-4xl md:text-5xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-lime-400 to-green-400">Master {courseData.subjects.join(", ")}</h1>
+          <p className="text-lg text-foreground/70 leading-relaxed">Practice {courseData.subjects.length} core subjects. Select a topic and difficulty to generate personalized questions. Perfect your answers for +4 marks or use hints for guidance.</p>
         </div>
       </motion.div>
 

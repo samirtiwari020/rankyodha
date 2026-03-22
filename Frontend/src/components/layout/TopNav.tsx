@@ -1,5 +1,6 @@
 import { Moon, Sun, Flame, Zap, Bell } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
+import { CurrentCourseIndicator } from "@/components/CurrentCourseIndicator";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
@@ -8,12 +9,17 @@ export function TopNav() {
 
   return (
     <header className="h-14 border-b border-border/60 bg-card/50 backdrop-blur-2xl flex items-center justify-between px-4 sticky top-0 z-30">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4 flex-1">
         <SidebarTrigger className="text-muted-foreground hover:text-foreground transition-colors" />
         <div className="hidden sm:block h-5 w-px bg-border/60" />
         <span className="hidden sm:block text-sm text-muted-foreground">
           Welcome, <strong className="text-foreground font-semibold">Samir</strong>
         </span>
+        
+        {/* Course Indicator */}
+        <div className="hidden md:block flex-1 max-w-xs">
+          <CurrentCourseIndicator />
+        </div>
       </div>
 
       <div className="flex items-center gap-1.5">

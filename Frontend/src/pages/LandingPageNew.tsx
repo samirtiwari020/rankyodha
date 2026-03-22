@@ -25,6 +25,7 @@ import {
   Award,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import ParticleBackground from "@/components/ParticleBackground";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 import type { Easing } from "framer-motion";
@@ -94,21 +95,6 @@ const heroTextVariants = {
     y: 0,
     transition: { delay: i * 0.1, duration: 0.7, ease: "easeOut" as Easing },
   }),
-};
-
-const floatingVariants = {
-  animate: {
-    y: [0, -15, 0],
-    transition: { duration: 4, repeat: Infinity, ease: "easeInOut" as Easing },
-  },
-};
-
-const pulseVariants = {
-  animate: {
-    scale: [1, 1.05, 1],
-    opacity: [0.8, 1, 0.8],
-    transition: { duration: 3, repeat: Infinity, ease: "easeInOut" as Easing },
-  },
 };
 
 /* ─── Data ─── */
@@ -190,7 +176,7 @@ const testimonials = [
   {
     name: "Arjun Singh",
     exam: "JEE 2024 - 99.9 Percentile",
-    quote: "NeuroPrep's AI completely changed my study approach. My mock score went from 65% to 92% in just 3 months!",
+    quote: "RankYodha's AI completely changed my study approach. My mock score went from 65% to 92% in just 3 months!",
     avatar: "🧑‍🎓",
     color: "from-cyan-500 to-blue-500",
   },
@@ -215,7 +201,9 @@ export default function LandingPageNew() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+    <div className="relative min-h-screen bg-background text-foreground overflow-x-hidden">
+      <ParticleBackground />
+      <div className="relative z-10">
       {/* ══════════════════════════════════════════════════════════════════
           NAVBAR
           ══════════════════════════════════════════════════════════════════ */}
@@ -225,7 +213,7 @@ export default function LandingPageNew() {
             <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-cyan-500 to-lime-500 flex items-center justify-center shadow-lg shadow-cyan-500/30 group-hover:shadow-cyan-500/50 transition-all">
               <Brain className="h-5 w-5 text-white" />
             </div>
-            <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-lime-400 bg-clip-text text-transparent hidden sm:inline">NeuroPrep</span>
+            <span className="text-lg font-bold bg-gradient-to-r from-cyan-400 to-lime-400 bg-clip-text text-transparent hidden sm:inline">RankYodha</span>
           </button>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
@@ -263,17 +251,6 @@ export default function LandingPageNew() {
           HERO SECTION - REDESIGNED
           ══════════════════════════════════════════════════════════════════ */}
       <section className="relative pt-40 pb-32 px-4 sm:px-6 lg:px-8 overflow-hidden">
-        {/* Animated background elements */}
-        <div className="absolute inset-0 -z-10">
-          {/* Gradient grid background */}
-          <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(6,182,212,.05)_25%,rgba(6,182,212,.05)_50%,transparent_50%,transparent_75%,rgba(6,182,212,.05)_75%,rgba(6,182,212,.05))] bg-[length:60px_60px]" />
-          
-          {/* Floating gradient orbs */}
-          <motion.div variants={floatingVariants} animate="animate" className="absolute -top-40 -right-40 w-96 h-96 bg-gradient-to-br from-cyan-500/20 to-transparent rounded-full blur-3xl" />
-          <motion.div variants={pulseVariants} animate="animate" className="absolute -bottom-32 -left-32 w-80 h-80 bg-gradient-to-tr from-lime-500/15 to-transparent rounded-full blur-3xl" />
-          <motion.div variants={floatingVariants} animate="animate" className="absolute top-1/2 right-1/4 w-64 h-64 bg-gradient-to-b from-green-500/10 to-transparent rounded-full blur-3xl" style={{ animationDelay: "1s" }} />
-        </div>
-
         <div className="max-w-6xl mx-auto relative z-10">
           <motion.div initial="hidden" animate="visible" variants={containerVariants} className="text-center space-y-6">
             {/* Smart badge */}
@@ -336,7 +313,7 @@ export default function LandingPageNew() {
         <div className="max-w-6xl mx-auto">
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="text-center mb-20">
             <h2 className="text-4xl sm:text-5xl font-black mb-4">
-              Why Students <span className="bg-gradient-to-r from-cyan-400 to-lime-400 bg-clip-text text-transparent">Love NeuroPrep</span>
+              Why Students <span className="bg-gradient-to-r from-cyan-400 to-lime-400 bg-clip-text text-transparent">Love RankYodha</span>
             </h2>
             <p className="text-muted-foreground text-lg max-w-2xl mx-auto">Everything you need to excel in your exams, powered by cutting-edge AI technology</p>
           </motion.div>
@@ -457,7 +434,7 @@ export default function LandingPageNew() {
             <h2 className="text-4xl sm:text-5xl font-black mb-4">
               <span className="bg-gradient-to-r from-lime-400 to-green-400 bg-clip-text text-transparent">Success Stories</span> From Real Students
             </h2>
-            <p className="text-muted-foreground text-lg">See how NeuroPrep has transformed learning for thousands</p>
+            <p className="text-muted-foreground text-lg">See how RankYodha has transformed learning for thousands</p>
           </motion.div>
 
           <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, amount: 0.2 }} variants={containerVariants} className="grid md:grid-cols-3 gap-8">
@@ -527,9 +504,9 @@ export default function LandingPageNew() {
               <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-cyan-500 to-lime-500 flex items-center justify-center">
                 <Brain className="h-4 w-4 text-white" />
               </div>
-              <span className="font-bold text-foreground">NeuroPrep AI</span>
+              <span className="font-bold text-foreground">RankYodha</span>
             </div>
-            <p>&copy; 2026 NeuroPrep AI. All rights reserved.</p>
+            <p>&copy; 2026 RankYodha. All rights reserved.</p>
             <div className="flex gap-6">
               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
@@ -538,6 +515,7 @@ export default function LandingPageNew() {
           </div>
         </div>
       </footer>
+      </div>
     </div>
   );
 }

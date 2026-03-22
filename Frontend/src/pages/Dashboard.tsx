@@ -16,6 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { apiRequest } from "@/lib/api";
+import { useCourse } from "@/contexts/CourseContext";
+import { getCourseData, getMockCourseStats, getCourseColorScheme } from "@/utils/courseData";
 
 type AnalyticsData = {
   practiceCount: number;
@@ -84,6 +86,11 @@ function ProgressArc({ progress }: { progress: number }) {
 }
 
 export default function Dashboard() {
+  const { selectedCourse } = useCourse();
+  const courseData = getCourseData(selectedCourse);
+  const courseStats = getMockCourseStats(selectedCourse);
+  const courseColors = getCourseColorScheme(selectedCourse);
+  
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [gami, setGami] = useState<GamificationData | null>(null);
   const [revisions, setRevisions] = useState<RevisionData[]>([]);
@@ -158,35 +165,35 @@ export default function Dashboard() {
 
   const kpis = [
     { label: "Total XP", value: points.toLocaleString(), icon: Zap, tone: "from-cyan-500 to-blue-500" },
-    { label: "Accuracy", value: `${accuracy}%`, icon: Target, tone: "from-green-500 to-lime-500" },
+    { label: "Accuracy", value: `${courseData.accuracy}%`, icon: Target, tone: "from-green-500 to-lime-500" },
     { label: "Practice", value: String(practiceCount), icon: TrendingUp, tone: "from-emerald-500 to-teal-500" },
-    { label: "Notes", value: String(notesCount), icon: Flame, tone: "from-lime-500 to-green-500" },
+    { label: "Completion", value: `${courseData.completionPercentage}%`, icon: Flame, tone: "from-lime-500 to-green-500" },
   ];
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="mx-auto max-w-7xl space-y-6">
-      <motion.section variants={fadeUp} className="relative overflow-hidden rounded-3xl border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 via-background to-lime-950/20 p-6 md:p-8">
+      <motion.section variants={fadeUp} className={`relative overflow-hidden rounded-3xl border ${courseColors.border} bg-gradient-to-br ${courseColors.bg} backdrop-blur p-6 md:p-8`}>
         <div className="absolute -right-20 -top-20 h-60 w-60 rounded-full bg-cyan-500/15 blur-3xl" />
         <div className="absolute -bottom-20 -left-20 h-56 w-56 rounded-full bg-lime-500/15 blur-3xl" />
 
         <div className="relative z-10 grid gap-6 md:grid-cols-[1.2fr_.8fr]">
           <div>
-            <p className="mb-2 inline-flex items-center gap-2 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-300">
-              <Sparkles className="h-3.5 w-3.5" /> Dashboard Command Center
+            <p className={`mb-2 inline-flex items-center gap-2 rounded-full border ${courseColors.badge} px-3 py-1 text-xs font-semibold`}>
+              <Sparkles className="h-3.5 w-3.5" /> {courseData.name} Dashboard
             </p>
             <h1 className="text-3xl font-black md:text-5xl leading-[1.08]">
               Welcome back, <span className="bg-gradient-to-r from-cyan-400 to-lime-400 bg-clip-text text-transparent">{gami?.user?.name || "Learner"}</span>
             </h1>
             <p className="mt-3 max-w-xl text-sm text-muted-foreground md:text-base">
-              Live performance from your backend data: practice accuracy, revisions due, and progress metrics.
+              {courseData.description}
             </p>
             <div className="mt-5 flex flex-wrap gap-3">
-              <Link to="/practice">
+              <Link to={`/practice/${selectedCourse}`}>
                 <Button className="gap-2 bg-gradient-to-r from-cyan-500 to-lime-500 font-semibold text-black hover:opacity-95">
                   <Play className="h-4 w-4" /> Start Focus Session
                 </Button>
               </Link>
-              <Link to="/ai-solver">
+              <Link to={`/ai-solver/${selectedCourse}`}>
                 <Button variant="outline" className="gap-2">
                   <MessageCircleQuestion className="h-4 w-4" /> Ask AI Tutor
                 </Button>
@@ -207,7 +214,7 @@ export default function Dashboard() {
               <div className="space-y-2 text-xs">
                 <p className="text-muted-foreground">Revisions due today/tomorrow</p>
                 <p className="text-2xl font-black">{todayTasks.length}</p>
-                <p className="text-cyan-300">Upcoming this week: {upcomingRevisions}</p>
+                <p className={courseColors.text}>Streak: {courseData.studyStreak} days 🔥</p>
               </div>
             </div>
           </div>

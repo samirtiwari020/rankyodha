@@ -14,6 +14,15 @@ const stagger: Variants = {
   show: { opacity: 1, transition: { staggerChildren: 0.08 } },
 };
 
+const SM2_RATINGS = [
+  { value: 0, label: "0 - Complete Blackout", color: "text-red-500", bg: "bg-red-500/10 hover:bg-red-500/20 border-red-500/30" },
+  { value: 1, label: "1 - Incorrect, but familiar", color: "text-orange-500", bg: "bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30" },
+  { value: 2, label: "2 - Incorrect, seemed easy", color: "text-amber-500", bg: "bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30" },
+  { value: 3, label: "3 - Correct, hard effort", color: "text-lime-500", bg: "bg-lime-500/10 hover:bg-lime-500/20 border-lime-500/30" },
+  { value: 4, label: "4 - Correct, with hesitation", color: "text-emerald-500", bg: "bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/30" },
+  { value: 5, label: "5 - Perfect Response", color: "text-cyan-500", bg: "bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30" },
+];
+
 type RevisionItem = {
   _id: string;
   topic: string;
@@ -23,9 +32,8 @@ type RevisionItem = {
 
 export default function Revision() {
   const [revisions, setRevisions] = useState<RevisionItem[]>([]);
-  const [completed, setCompleted] = useState<Record<string, boolean>>({});
   const [topic, setTopic] = useState("");
-  const [confidence, setConfidence] = useState(3);
+  const [rating, setRating] = useState(3);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -60,12 +68,12 @@ export default function Revision() {
         "/api/v1/revision",
         {
           method: "POST",
-          body: JSON.stringify({ topic: topic.trim(), confidence }),
+          body: JSON.stringify({ topic: topic.trim(), confidence: rating }),
         },
         true
       );
       setTopic("");
-      setConfidence(3);
+      setRating(3);
       await loadRevisions();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add revision");
@@ -74,18 +82,14 @@ export default function Revision() {
     }
   };
 
-  const toggleDone = (id: string) => {
-    setCompleted((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
   const stats = useMemo(() => {
     const total = revisions.length;
-    const done = revisions.filter((r) => completed[r._id]).length;
-    const pending = total - done;
+    const dueRevisions = revisions.filter(r => new Date(r.nextRevisionAt) <= new Date()).length;
+    const pending = total; // In SM-2, learning is continuous.
     const subjects = new Set(revisions.map((r) => r.topic.split("-")[0].trim())).size;
-    const completionRate = total ? Math.round((done / total) * 100) : 0;
-    return { total, done, pending, subjects, completionRate };
-  }, [revisions, completed]);
+    const completionRate = total ? Math.round(((total - dueRevisions) / total) * 100) : 0;
+    return { total, dueRevisions, pending, subjects, completionRate };
+  }, [revisions]);
 
   if (loading) {
     return <div className="max-w-6xl mx-auto">Loading revisions...</div>;
@@ -99,20 +103,28 @@ export default function Revision() {
       </motion.div>
 
       <motion.div variants={fadeUp} className="glass-card rounded-2xl border border-border/50 p-5 space-y-3">
-        <h3 className="text-sm font-semibold">Add Revision Topic</h3>
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
-          <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Thermodynamics - 2nd Law" />
-          <select
-            value={confidence}
-            onChange={(e) => setConfidence(Number(e.target.value))}
-            className="h-10 rounded-md border border-border bg-background px-3 text-sm"
-          >
-            {[1, 2, 3, 4, 5].map((v) => (
-              <option key={v} value={v}>Confidence {v}</option>
+        <h3 className="text-sm font-semibold">Review a Topic</h3>
+        <p className="text-xs text-muted-foreground mb-2">How well did you remember this concept? The AI will schedule your next review based on your rating.</p>
+        
+        <div className="grid gap-3">
+          <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Thermodynamics - 2nd Law" className="max-w-md" />
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-w-2xl mt-2">
+            {SM2_RATINGS.map((r) => (
+              <button
+                key={r.value}
+                onClick={() => setRating(r.value)}
+                className={`px-3 py-2 text-xs font-medium rounded-lg border text-left transition-colors ${
+                  rating === r.value ? r.bg + " ring-2 ring-primary/50" : "border-border bg-background hover:bg-muted"
+                } ${rating === r.value ? r.color : "text-muted-foreground"}`}
+              >
+                {r.label}
+              </button>
             ))}
-          </select>
-          <Button onClick={addRevision} disabled={saving} className="bg-gradient-to-r from-cyan-500 to-lime-500 text-black">
-            {saving ? "Adding..." : "Add"}
+          </div>
+
+          <Button onClick={addRevision} disabled={saving} className="w-fit mt-2 bg-gradient-to-r from-cyan-500 to-lime-500 text-black">
+            {saving ? "Processing..." : "Submit Review"}
           </Button>
         </div>
         {error && <p className="text-sm text-red-400">{error}</p>}
@@ -120,9 +132,9 @@ export default function Revision() {
 
       <motion.div variants={fadeUp} className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[
-          { icon: Target, label: "Total", value: stats.total, color: "from-cyan-500 to-blue-500" },
-          { icon: CheckCircle2, label: "Completed", value: stats.done, color: "from-lime-500 to-emerald-500" },
-          { icon: Clock3, label: "Pending", value: stats.pending, color: "from-amber-500 to-orange-500" },
+          { icon: Target, label: "Total Topics", value: stats.total, color: "from-cyan-500 to-blue-500" },
+          { icon: Clock3, label: "Due Now", value: stats.dueRevisions, color: "from-orange-500 to-red-500" },
+          { icon: CheckCircle2, label: "Retention Rate", value: `${stats.completionRate}%`, color: "from-lime-500 to-emerald-500" },
           { icon: TrendingUp, label: "Subjects", value: stats.subjects, color: "from-fuchsia-500 to-cyan-500" },
         ].map((stat) => (
           <div key={stat.label} className="glass-card relative overflow-hidden rounded-2xl border border-border/50 p-4">
@@ -144,20 +156,40 @@ export default function Revision() {
         {revisions.length === 0 ? (
           <div className="rounded-xl border border-border p-4 text-sm text-muted-foreground">No revisions scheduled yet.</div>
         ) : (
-          revisions.map((item) => (
-            <motion.div
-              key={item._id}
-              whileHover={{ y: -2 }}
-              className={`flex items-center gap-4 rounded-2xl border p-4 ${completed[item._id] ? "border-lime-500/35 bg-lime-500/10" : "border-border/50 bg-muted/20"}`}
-              onClick={() => toggleDone(item._id)}
-            >
-              {completed[item._id] ? <CheckCircle2 className="h-5 w-5 text-lime-300" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
-              <div className="flex-1">
-                <p className={`text-sm font-semibold ${completed[item._id] ? "line-through text-lime-200/80" : ""}`}>{item.topic}</p>
-                <p className="text-xs text-muted-foreground">Due: {new Date(item.nextRevisionAt).toLocaleString()} · Confidence {item.confidence}</p>
-              </div>
-            </motion.div>
-          ))
+          revisions.map((item) => {
+            const isDue = new Date(item.nextRevisionAt) <= new Date();
+            
+            return (
+              <motion.div
+                key={item._id}
+                whileHover={{ y: -2 }}
+                className={`flex items-center gap-4 rounded-2xl border p-4 ${
+                  isDue 
+                    ? "border-orange-500/30 bg-orange-500/5" 
+                    : "border-border/50 bg-muted/20"
+                }`}
+              >
+                {isDue ? <Clock3 className="h-5 w-5 text-orange-400 animate-pulse" /> : <Circle className="h-5 w-5 text-muted-foreground" />}
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">{item.topic}</p>
+                  <p className={`text-xs ${isDue ? "text-orange-400 font-medium" : "text-muted-foreground"}`}>
+                    {isDue ? "Due Now for Review!" : `Next Review: ${new Date(item.nextRevisionAt).toLocaleString()}`}
+                  </p>
+                </div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => {
+                    setTopic(item.topic);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className={isDue ? "border-orange-500/50 text-orange-400 hover:bg-orange-500/10" : ""}
+                >
+                  Review
+                </Button>
+              </motion.div>
+            );
+          })
         )}
       </motion.div>
 

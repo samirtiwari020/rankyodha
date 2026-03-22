@@ -11,6 +11,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { CourseSelectorPanel } from "@/components/CourseSelectorPanel";
 import { useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -46,17 +47,19 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const location = useLocation();
 
+  const isRouteActive = (url: string) => {
+    return location.pathname === url || location.pathname.startsWith(`${url}/`);
+  };
+
   const renderNavItems = (items: typeof navItems) =>
     items.map((item) => {
-      const isActive = item.url === "/dashboard"
-        ? location.pathname === "/dashboard"
-        : location.pathname.startsWith(item.url);
+      const isActive = isRouteActive(item.url);
       return (
         <SidebarMenuItem key={item.title}>
           <SidebarMenuButton asChild>
             <NavLink
               to={item.url}
-              end={item.url === "/dashboard"}
+              end={false}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all duration-200 group/item ${
                 isActive
                   ? "bg-primary/10 text-primary font-semibold shadow-sm"
@@ -85,7 +88,7 @@ export function AppSidebar() {
             <Brain className="h-4.5 w-4.5 text-primary-foreground" />
           </div>
           {!collapsed && (
-            <span className="font-extrabold text-lg gradient-text tracking-tight">NeuroPrep</span>
+            <span className="font-extrabold text-lg gradient-text tracking-tight">RankYodha</span>
           )}
         </div>
       </SidebarHeader>
@@ -114,6 +117,9 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        
+        {/* Course Selector Panel */}
+        {!collapsed && <CourseSelectorPanel />}
       </SidebarContent>
     </Sidebar>
   );

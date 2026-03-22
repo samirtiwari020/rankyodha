@@ -12,7 +12,7 @@ const ThemeContext = createContext<ThemeContextType>({ theme: "light", toggleThe
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("neuroprep-theme") as Theme) || "light";
+      return (localStorage.getItem("rankyodha-theme") as Theme) || "light";
     }
     return "light";
   });
@@ -21,7 +21,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.classList.remove("light", "dark");
     root.classList.add(theme);
-    localStorage.setItem("neuroprep-theme", theme);
+    localStorage.setItem("rankyodha-theme", theme);
   }, [theme]);
 
   const toggleTheme = () => setTheme((t) => (t === "light" ? "dark" : "light"));

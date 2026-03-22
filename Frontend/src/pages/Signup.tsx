@@ -96,7 +96,7 @@ export default function Signup() {
                 <Brain className="h-6 w-6 text-white" />
               </div>
               <div>
-                <p className="text-lg font-bold">NeuroPrep AI</p>
+                <p className="text-lg font-bold">RankYodha</p>
                 <p className="text-xs text-muted-foreground">Designed for top rankers</p>
               </div>
             </div>
@@ -126,7 +126,7 @@ export default function Signup() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-lime-500">
                   <Brain className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-sm font-bold">NeuroPrep AI</span>
+                <span className="text-sm font-bold">RankYodha</span>
               </button>
               <span className="rounded-full border border-lime-500/30 bg-lime-500/10 px-3 py-1 text-xs font-medium text-lime-300">Signup</span>
             </div>

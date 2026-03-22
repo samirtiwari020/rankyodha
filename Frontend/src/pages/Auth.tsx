@@ -111,7 +111,7 @@ export default function Auth() {
                 <Brain className="h-6 w-6 text-white" />
               </div>
               <div>
-                <p className="text-lg font-bold">NeuroPrep AI</p>
+                <p className="text-lg font-bold">RankYodha</p>
                 <p className="text-xs text-muted-foreground">Smarter prep, faster results</p>
               </div>
             </div>
@@ -153,7 +153,7 @@ export default function Auth() {
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500 to-lime-500">
                   <Brain className="h-5 w-5 text-white" />
                 </div>
-                <span className="text-sm font-bold">NeuroPrep AI</span>
+                <span className="text-sm font-bold">RankYodha</span>
               </button>
               <span className="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-300">Login</span>
             </div>
