@@ -15,6 +15,8 @@ import gamificationRoutes from "./routes/gamification.routes.js";
 import interviewRoutes from "./routes/interview.routes.js";
 import onePagerRoutes from "./routes/onePager.routes.js";
 import studyPlanRoutes from "./routes/studyPlan.routes.js";
+import adaptiveLearningRoutes from "./routes/adaptiveLearning.routes.js";
+import rebalancePlanRoutes from "./routes/rebalancePlan.routes.js";
 
 const app = express();
 
@@ -38,6 +40,8 @@ app.use("/api/v1/gamification", gamificationRoutes);
 app.use("/api/v1/interview", interviewRoutes);
 app.use("/api/v1/onepager", onePagerRoutes);
 app.use("/api/study-plan", studyPlanRoutes);
+app.use("/api/v1/adaptive-learning", adaptiveLearningRoutes);
+app.use("/api/rebalance-plan", rebalancePlanRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

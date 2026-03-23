@@ -65,9 +65,11 @@ interface AdaptiveNextQuestionResponse {
   topic: string | null;
   recommendedDifficulty: "Easy" | "Medium" | "Hard";
   question: PracticeApiQuestion | null;
+  currentStreak?: number;
+  confidenceScore?: number;
 }
 
-interface AdaptiveSubmitResponse {
+interface AdaptiveAttemptResponse {
   score: number;
   totalAttempted: number;
   evaluatedSubmissions: Array<{
@@ -88,6 +90,7 @@ interface QuestionResult {
 }
 
 const OPTION_LETTERS = ["A", "B", "C", "D"] as const;
+const QUESTIONS_PER_SESSION = 5;
 
 const parseQuestionText = (rawQuestion: string, apiOptions?: string[]) => {
   if (Array.isArray(apiOptions) && apiOptions.length >= 2) {
@@ -146,11 +149,10 @@ export default function Practice() {
   
   // Use course-specific subjects or default topics
   const topics = courseData.subjects;
-  const difficulties = ["Easy", "Medium", "Hard"];
-  
   const [stage, setStage] = useState<"select" | "quiz" | "evaluation">("select");
   const [selectedTopic, setSelectedTopic] = useState("");
   const [selectedDifficulty, setSelectedDifficulty] = useState<"Easy" | "Medium" | "Hard">("Medium");
+  const [adaptiveTopic, setAdaptiveTopic] = useState("");
 
   // Quiz State
   const [loading, setLoading] = useState(false);
@@ -229,11 +231,12 @@ export default function Practice() {
     setQuestions([]);
     setSelectedOption(null);
     setNumericalAnswer("");
+    setAdaptiveTopic("");
 
     try {
-      const requestTopic = selectedTopic === "Mathematics" ? "Math" : selectedTopic;
+      const requestSubject = selectedTopic === "Mathematics" ? "Math" : selectedTopic;
       const data = await apiRequest<AdaptiveNextQuestionResponse>(
-        `/api/v1/adaptive-learning/next?subject=${encodeURIComponent(requestTopic)}`,
+        `/api/v1/adaptive-learning/next?subject=${encodeURIComponent(requestSubject)}`,
         { method: "GET" },
         true
       );
@@ -246,6 +249,7 @@ export default function Practice() {
 
       setQuestions(normalized);
       setSelectedDifficulty(data.recommendedDifficulty || "Medium");
+      setAdaptiveTopic(data.topic || requestSubject);
 
       setTimeElapsed(0);
       setRevealedHints(0);
@@ -266,7 +270,7 @@ export default function Practice() {
     }
   };
 
-  const submitAnswer = () => {
+  const submitAnswer = async () => {
     const currQ = questions[currentQIndex];
     const isMCQ = currQ.questionType === "MCQ";
     const hasAnswer = isMCQ ? selectedOption !== null : numericalAnswer.trim().length > 0;
@@ -274,7 +278,7 @@ export default function Practice() {
     if (!hasAnswer) return;
 
     const usedHint = revealedHints > 0;
-    const processResult = (isCorrect: boolean, correctAnswerText: string | null = null) => {
+    const processResult = async (isCorrect: boolean, correctAnswerText: string | null = null) => {
       const marks = (isCorrect && !usedHint) ? 4 : 0;
       const res: QuestionResult = {
         questionData: currQ,
@@ -286,16 +290,33 @@ export default function Practice() {
       };
 
       setResults(prev => [...prev, res]);
+      const nextResultCount = results.length + 1;
 
-      if (currentQIndex < questions.length - 1) {
-        setCurrentQIndex(prev => prev + 1);
-        setSelectedOption(null);
-        setNumericalAnswer("");
-        setRevealedHints(0);
-        setTimeElapsed(0);
-      } else {
+      if (nextResultCount >= QUESTIONS_PER_SESSION) {
         setStage("evaluation");
+        return;
       }
+
+      const requestSubject = selectedTopic === "Mathematics" ? "Math" : selectedTopic;
+      const nextData = await apiRequest<AdaptiveNextQuestionResponse>(
+        `/api/v1/adaptive-learning/next?subject=${encodeURIComponent(requestSubject)}`,
+        { method: "GET" },
+        true
+      );
+
+      if (!nextData.question) {
+        setStage("evaluation");
+        return;
+      }
+
+      setQuestions(prev => [...prev, normalizeQuestion(nextData.question as PracticeApiQuestion)]);
+      setSelectedDifficulty(nextData.recommendedDifficulty || "Medium");
+      setAdaptiveTopic(nextData.topic || requestSubject);
+      setCurrentQIndex(prev => prev + 1);
+      setSelectedOption(null);
+      setNumericalAnswer("");
+      setRevealedHints(0);
+      setTimeElapsed(0);
     };
 
     if (currQ.id) {
@@ -307,37 +328,36 @@ export default function Practice() {
         answerValue = numericalAnswer.trim();
       }
 
-      apiRequest<AdaptiveSubmitResponse>(
-        "/api/v1/adaptive-learning/submit",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            submissions: [{ questionId: currQ.id, selectedAnswer: answerValue }]
-          })
-        },
-        true
-      )
-        .then((result) => {
-          const submissionResult = result.evaluatedSubmissions?.[0];
-          processResult(Boolean(submissionResult?.isCorrect), submissionResult?.correctAnswer || null);
-        })
-        .catch(() => {
-          // Fallback: compare locally
-          if (isMCQ) {
-            processResult(selectedOption === currQ.correctAnswerIndex);
-          } else {
-            processResult(
-              numericalAnswer.toString().toLowerCase().trim() === 
+      try {
+        const result = await apiRequest<AdaptiveAttemptResponse>(
+          "/api/v1/adaptive-learning/attempt",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              questionId: currQ.id,
+              selectedAnswer: answerValue
+            })
+          },
+          true
+        );
+
+        const submissionResult = result.evaluatedSubmissions?.[0];
+        await processResult(Boolean(submissionResult?.isCorrect), submissionResult?.correctAnswer || null);
+      } catch {
+        if (isMCQ) {
+          await processResult(selectedOption === currQ.correctAnswerIndex);
+        } else {
+          await processResult(
+            numericalAnswer.toString().toLowerCase().trim() ===
               (currQ.numericalAnswer || "").toString().toLowerCase().trim()
-            );
-          }
-        });
+          );
+        }
+      }
     } else {
-      // No API call, compare locally
       if (isMCQ) {
-        processResult(selectedOption === currQ.correctAnswerIndex);
+        await processResult(selectedOption === currQ.correctAnswerIndex);
       } else {
-        processResult(
+        await processResult(
           numericalAnswer.toString().toLowerCase().trim() === 
           (currQ.numericalAnswer || "").toString().toLowerCase().trim()
         );
@@ -370,7 +390,7 @@ export default function Practice() {
             <span className="text-xs font-bold uppercase tracking-widest">{courseData.name} - Practice</span>
           </motion.div>
           <h1 className="text-4xl md:text-5xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-lime-400 to-green-400">Master {courseData.subjects.join(", ")}</h1>
-          <p className="text-lg text-foreground/70 leading-relaxed">Practice {courseData.subjects.length} core subjects. Select a topic and difficulty to generate personalized questions. Perfect your answers for +4 marks or use hints for guidance.</p>
+          <p className="text-lg text-foreground/70 leading-relaxed">Practice {courseData.subjects.length} core subjects. Select your subject and let the backend adapt topic and difficulty based on your performance.</p>
         </div>
       </motion.div>
 
@@ -426,45 +446,8 @@ export default function Practice() {
             </div>
           </div>
 
-          {/* Difficulty Selection */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                <Target className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold">Select Difficulty</h2>
-                <p className="text-sm text-muted-foreground">Match your current skill level</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              {difficulties.map((d, i) => {
-                const diffColors = {
-                  Easy: "from-emerald-500 to-green-500",
-                  Medium: "from-amber-500 to-orange-500",
-                  Hard: "from-red-500 to-pink-500",
-                };
-                return (
-                  <motion.button
-                    key={d}
-                    onClick={() => setSelectedDifficulty(d)}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.25 + i * 0.06 }}
-                    whileHover={{ y: -4 }}
-                    whileTap={{ scale: 0.95 }}
-                    className={`relative rounded-2xl p-4 font-bold transition-all border overflow-hidden group ${
-                      selectedDifficulty === d
-                        ? `bg-gradient-to-br ${diffColors[d as keyof typeof diffColors]} text-white border-opacity-50 shadow-lg`
-                        : "glass-card border-border/60 text-foreground hover:border-amber-500/40"
-                    }`}
-                  >
-                    <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity ${selectedDifficulty !== d ? `bg-gradient-to-br ${diffColors[d as keyof typeof diffColors]}/10` : ""}`} />
-                    <span className="relative z-10">{d}</span>
-                  </motion.button>
-                );
-              })}
-            </div>
+          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4">
+            <p className="text-sm text-cyan-200">Difficulty is automatically managed by adaptive engine based on your accuracy.</p>
           </div>
 
           {/* CTA Button */}
@@ -476,11 +459,11 @@ export default function Practice() {
           >
             <Button
               onClick={startQuiz}
-              disabled={!selectedTopic || !selectedDifficulty || loading}
+              disabled={!selectedTopic || loading}
               className="flex-1 h-12 text-base font-bold bg-gradient-to-r from-cyan-500 to-lime-500 text-black hover:shadow-lg hover:shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed gap-2"
             >
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Zap className="h-5 w-5" />}
-              {loading ? "Generating Questions..." : `Start ${selectedDifficulty} Practice`}
+              {loading ? "Generating Questions..." : "Start Adaptive Practice"}
             </Button>
           </motion.div>
         </motion.div>
@@ -494,7 +477,7 @@ export default function Practice() {
             {[
               { icon: Target, label: "Progress", value: `Q${currentQIndex + 1}/${questions.length}`, color: "from-cyan-500 to-blue-500" },
               { icon: Clock, label: "Time", value: `${timeElapsed}s`, color: "from-amber-500 to-orange-500" },
-              { icon: TrendingUp, label: "Current Topic", value: selectedTopic, color: "from-lime-500 to-green-500" },
+              { icon: TrendingUp, label: "Current Topic", value: adaptiveTopic || selectedTopic, color: "from-lime-500 to-green-500" },
             ].map((stat, i) => (
               <motion.div
                 key={stat.label}
@@ -529,7 +512,7 @@ export default function Practice() {
               {/* Question Number and Difficulty Badge */}
               <div className="flex items-center justify-between mb-4">
                 <span className="px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500/30 to-lime-500/30 border border-cyan-500/50 text-xs font-bold text-cyan-300 uppercase tracking-widest">
-                  Question {currentQIndex + 1} of {questions.length}
+                  Question {currentQIndex + 1} of {QUESTIONS_PER_SESSION}
                 </span>
                 <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
                   selectedDifficulty === "Easy"
@@ -686,7 +669,7 @@ export default function Practice() {
               }
               className="w-full h-12 text-base font-bold bg-gradient-to-r from-cyan-500 to-lime-500 text-black hover:shadow-lg hover:shadow-cyan-500/25 disabled:opacity-50 disabled:cursor-not-allowed gap-2"
             >
-              {currentQIndex < questions.length - 1 ? "Submit & Next Question" : "Submit & Get Results"}
+              {currentQIndex < QUESTIONS_PER_SESSION - 1 ? "Submit & Next Question" : "Submit & Get Results"}
               <ChevronRight className="h-5 w-5" />
             </Button>
           </motion.div>
@@ -717,7 +700,7 @@ export default function Practice() {
                 Excellent Work!
               </h2>
               <p className="text-lg text-foreground/70">
-                You've completed your {selectedTopic} {selectedDifficulty.toLowerCase()} practice challenge.
+                You've completed your adaptive {selectedTopic} practice challenge.
               </p>
             </div>
           </motion.div>

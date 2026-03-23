@@ -9,7 +9,9 @@ import {
   getQuestionCatalog,
   submitPracticeAnswers,
   getPerformanceAnalysis,
-  getAdaptiveQuestions
+  getAdaptiveQuestions,
+  getNextAdaptiveQuestion,
+  submitAdaptiveAttempt
 } from "../controllers/adaptiveLearning.controller.js";
 
 const router = Router();
@@ -27,5 +29,7 @@ router.get("/catalog", protect, getQuestionCatalog);
 router.post("/submit", protect, submitPracticeAnswers);
 router.get("/analysis", protect, getPerformanceAnalysis);
 router.get("/recommend", protect, getAdaptiveQuestions);
+router.get("/next", protect, getNextAdaptiveQuestion);
+router.post("/attempt", protect, submitAdaptiveAttempt);
 
 export default router;
