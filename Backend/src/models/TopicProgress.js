@@ -7,7 +7,8 @@ const topicProgressSchema = new mongoose.Schema(
     mastery: { type: Number, default: 0, min: 0, max: 100 },
     attempts: { type: Number, default: 0 },
     prerequisites: [{ type: String, trim: true }], // Auto-populated by AI
-    relatedTopics: [{ type: String, trim: true }] // Auto-populated by AI
+    relatedTopics: [{ type: String, trim: true }], // Auto-populated by AI
+    course: { type: String, enum: ["jee", "neet", "upsc"], default: "jee" }
   },
   { timestamps: true }
 );

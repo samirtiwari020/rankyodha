@@ -3,12 +3,15 @@ import Revision from "../models/Revision.js";
 import Notes from "../models/Notes.js";
 import TopicProgress from "../models/TopicProgress.js";
 
-export const buildAnalytics = async (userId) => {
+export const buildAnalytics = async (userId, course) => {
+  const filter = { user: userId };
+  if (course) filter.course = course;
+
   const [practiceCount, correctCount, upcomingRevisions, notesCount] = await Promise.all([
-    Practice.countDocuments({ user: userId }),
-    Practice.countDocuments({ user: userId, isCorrect: true }),
-    Revision.countDocuments({ user: userId, nextRevisionAt: { $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } }),
-    Notes.countDocuments({ user: userId })
+    Practice.countDocuments(filter),
+    Practice.countDocuments({ ...filter, isCorrect: true }),
+    Revision.countDocuments({ ...filter, nextRevisionAt: { $lte: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } }),
+    Notes.countDocuments(filter)
   ]);
 
   const accuracy = practiceCount ? Math.round((correctCount / practiceCount) * 100) : 0;
@@ -22,8 +25,10 @@ export const buildAnalytics = async (userId) => {
   };
 };
 
-export const buildGraph = async (userId) => {
-  const topics = await TopicProgress.find({ user: userId });
+export const buildGraph = async (userId, course) => {
+  const filter = { user: userId };
+  if (course) filter.course = course;
+  const topics = await TopicProgress.find(filter);
   
   const nodes = [];
   const links = [];
@@ -39,22 +44,17 @@ export const buildGraph = async (userId) => {
 
     // Add Edges (Prerequisites)
     t.prerequisites.forEach((pre) => {
-      // Create implicit node if it doesn't exist yet but was suggested by AI
-      if (!topicSet.has(pre)) {
-        nodes.push({ id: pre, val: 1, mastery: 0 });
-        topicSet.add(pre);
+      // ONLY link if the prerequisite is an actually studied topic
+      if (topicSet.has(pre)) {
+        links.push({ source: pre, target: t.topic });
       }
-      links.push({ source: pre, target: t.topic });
     });
 
     // Add Edges (Related)
     t.relatedTopics.forEach((rel) => {
-      if (!topicSet.has(rel)) {
-        nodes.push({ id: rel, val: 1, mastery: 0 });
-        topicSet.add(rel);
+      if (topicSet.has(rel)) {
+        links.push({ source: t.topic, target: rel });
       }
-      // Related topics are bi-directional conceptual links
-      links.push({ source: t.topic, target: rel });
     });
   });
 

@@ -9,7 +9,8 @@ const revisionSchema = new mongoose.Schema(
     confidence: { type: Number, default: 0, min: 0, max: 5 },
     interval: { type: Number, default: 0 }, // Interval in days
     easeFactor: { type: Number, default: 2.5, min: 1.3 }, // SM-2 Ease Factor
-    repetitions: { type: Number, default: 0 } // Consecutive successful recalls
+    repetitions: { type: Number, default: 0 }, // Consecutive successful recalls
+    course: { type: String, enum: ["jee", "neet", "upsc"], default: "jee" }
   },
   { timestamps: true }
 );

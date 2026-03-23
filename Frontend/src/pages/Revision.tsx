@@ -4,6 +4,7 @@ import { CalendarClock, CheckCircle2, Circle, Brain, Target, Clock3, TrendingUp,
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiRequest } from "@/lib/api";
+import { useCourse } from "@/contexts/CourseContext";
 
 const fadeUp: Variants = {
   hidden: { opacity: 0, y: 20 },
@@ -37,12 +38,13 @@ export default function Revision() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const { selectedCourse } = useCourse();
 
   const loadRevisions = async () => {
     setLoading(true);
     setError("");
     try {
-      const data = await apiRequest<RevisionItem[]>("/api/v1/revision", { method: "GET" }, true);
+      const data = await apiRequest<RevisionItem[]>(`/api/v1/revision?course=${selectedCourse}`, { method: "GET" }, true);
       setRevisions(Array.isArray(data) ? data : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load revisions");
@@ -53,7 +55,15 @@ export default function Revision() {
 
   useEffect(() => {
     loadRevisions();
-  }, []);
+  }, [selectedCourse]);
+
+  const placeholder = useMemo(() => {
+    switch(selectedCourse) {
+      case 'neet': return "eg: Human Physiology, Genetics...";
+      case 'upsc': return "eg: Indian Polity, Modern History...";
+      default: return "eg: Thermodynamics, Organic Chemistry...";
+    }
+  }, [selectedCourse]);
 
   const addRevision = async () => {
     if (!topic.trim()) {
@@ -68,7 +78,7 @@ export default function Revision() {
         "/api/v1/revision",
         {
           method: "POST",
-          body: JSON.stringify({ topic: topic.trim(), confidence: rating }),
+          body: JSON.stringify({ topic: topic.trim(), confidence: rating, course: selectedCourse }),
         },
         true
       );
@@ -98,8 +108,18 @@ export default function Revision() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="show" className="space-y-8 pb-10">
       <motion.div variants={fadeUp} className="relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/15 via-lime-500/5 to-transparent p-8 md:p-10">
-        <h1 className="text-4xl font-black md:text-5xl">Revision Planner</h1>
-        <p className="mt-2 text-sm text-foreground/75 md:text-base">All revision cards are loaded from your backend revision schedule.</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-4xl font-black md:text-5xl">Revision Planner</h1>
+            <p className="mt-2 text-sm text-foreground/75 md:text-base capitalize">
+              Your personalized {selectedCourse} revision schedule.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/20 px-6 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400">Active Course</p>
+            <p className="text-xl font-black uppercase text-white">{selectedCourse}</p>
+          </div>
+        </div>
       </motion.div>
 
       <motion.div variants={fadeUp} className="glass-card rounded-2xl border border-border/50 p-5 space-y-3">
@@ -107,7 +127,7 @@ export default function Revision() {
         <p className="text-xs text-muted-foreground mb-2">How well did you remember this concept? The AI will schedule your next review based on your rating.</p>
         
         <div className="grid gap-3">
-          <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="e.g. Thermodynamics - 2nd Law" className="max-w-md" />
+          <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={placeholder} className="max-w-md" />
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-w-2xl mt-2">
             {SM2_RATINGS.map((r) => (

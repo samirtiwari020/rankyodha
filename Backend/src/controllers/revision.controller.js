@@ -5,7 +5,7 @@ import { askAI } from "../services/ai.service.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
 
 export const addRevision = asyncHandler(async (req, res) => {
-  const { topic, confidence = 0 } = req.body;
+  const { topic, confidence = 0, course = "jee" } = req.body;
   if (!topic) {
     res.status(400);
     throw new Error("Topic is required");
@@ -40,7 +40,8 @@ export const addRevision = asyncHandler(async (req, res) => {
       nextRevisionAt,
       interval: sm2.interval,
       repetitions: sm2.repetitions,
-      easeFactor: sm2.easeFactor
+      easeFactor: sm2.easeFactor,
+      course
     },
     { upsert: true, new: true }
   );
@@ -52,31 +53,13 @@ export const addRevision = asyncHandler(async (req, res) => {
   let topicProgress = await TopicProgress.findOne({ user: req.user._id, topic });
 
   if (!topicProgress) {
-    // Dynamically generate knowledge graph connections via Gemini for new topics
-    let prerequisites = [];
-    let relatedTopics = [];
-
-    try {
-      const prompt = `Analyze the topic "${topic}". Return a raw JSON object (NO markdown formatting, NO backticks) with two string arrays: "prerequisites" (up to 3 foundational concepts needed before learning this) and "relatedTopics" (up to 3 connected concepts). Example format: {"prerequisites":["Algebra","Functions"],"relatedTopics":["Derivatives","Limits"]}`;
-      const aiResponse = await askAI(prompt, '{"prerequisites":[],"relatedTopics":[]}');
-      
-      // Clean up potential markdown formatting from the response
-      const cleanJsonStr = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      const parsed = JSON.parse(cleanJsonStr);
-      prerequisites = parsed.prerequisites || [];
-      relatedTopics = parsed.relatedTopics || [];
-    } catch (error) {
-      console.error("Failed to generate knowledge graph edges:", error);
-    }
-
+    // Simply create/update the topic progress without extra AI-generated ghost nodes
     topicProgress = await TopicProgress.create({
       user: req.user._id,
       topic,
       mastery: calculatedMastery,
       attempts: 1,
-      prerequisites,
-      relatedTopics
+      course
     });
   } else {
     topicProgress.mastery = calculatedMastery;
@@ -88,6 +71,10 @@ export const addRevision = asyncHandler(async (req, res) => {
 });
 
 export const getRevisions = asyncHandler(async (req, res) => {
-  const list = await Revision.find({ user: req.user._id }).sort({ nextRevisionAt: 1 });
+  const { course } = req.query;
+  const filter = { user: req.user._id };
+  if (course) filter.course = course;
+  
+  const list = await Revision.find(filter).sort({ nextRevisionAt: 1 });
   res.json(list);
 });

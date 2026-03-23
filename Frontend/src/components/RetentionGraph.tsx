@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { useCourse } from "@/contexts/CourseContext";
 
 interface GraphData {
   nodes: { id: string; val: number; mastery: number }[];
@@ -13,10 +14,31 @@ interface GraphData {
 export function RetentionGraph() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const { selectedCourse } = useCourse();
   const fgRef = useRef<any>();
   const [dimensions, setDimensions] = useState({ width: 0, height: 400 });
   const containerRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
+  
+  const [hoverNode, setHoverNode] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  // Animation loop for jiggle effect
+  useEffect(() => {
+    let animationFrameId: number;
+    if (hoverNode) {
+      const loop = () => {
+        setTick((t) => t + 1);
+        animationFrameId = requestAnimationFrame(loop);
+      };
+      loop();
+    } else {
+      setTick(0);
+    }
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [hoverNode]);
 
   // Resize observer to make graph responsive
   useEffect(() => {
@@ -38,8 +60,9 @@ export function RetentionGraph() {
 
   useEffect(() => {
     const fetchGraph = async () => {
+      setLoading(true);
       try {
-        const data = await apiRequest<GraphData>("/api/v1/analytics/graph", {}, true);
+        const data = await apiRequest<GraphData>(`/api/v1/analytics/graph?course=${selectedCourse}`, {}, true);
         setGraphData(data);
       } catch (error) {
         console.error("Failed to fetch graph data:", error);
@@ -49,7 +72,7 @@ export function RetentionGraph() {
     };
 
     fetchGraph();
-  }, []);
+  }, [selectedCourse]);
 
   // Center graph after loading
   useEffect(() => {
@@ -103,33 +126,60 @@ export function RetentionGraph() {
               linkDirectionalParticles={2}
               linkDirectionalParticleSpeed={0.005}
               d3VelocityDecay={0.3}
-              // Render labels next to nodes
+              onNodeHover={(node: any) => setHoverNode(node ? node.id : null)}
+              // Render labels inside nodes
               nodeCanvasObject={(node: any, ctx, globalScale) => {
                 const label = node.id;
-                const fontSize = 13/globalScale;
-                const radius = (node.val * 2) + 1;
+                const isHovered = node.id === hoverNode;
+                const fontSize = (isHovered ? 14 : 12) / globalScale;
+                
+                ctx.font = `bold ${fontSize}px Inter, system-ui, Sans-Serif`;
+                const textWidth = ctx.measureText(label).width;
+                
+                // Calculate dynamic radius to fit text, with padding
+                const baseRadius = (node.val * 2) + (isHovered ? 6 : 2);
+                const radius = Math.max(textWidth / 2 + (8 / globalScale), baseRadius);
+
+                let drawX = node.x;
+                let drawY = node.y;
+
+                // Apply jiggle movement if hovered
+                if (isHovered) {
+                  drawX += Math.sin(tick / 4) * (2 / globalScale);
+                  drawY += Math.cos(tick / 4) * (2 / globalScale);
+                }
 
                 // Add Glow Effect
                 ctx.shadowColor = getNodeColor(node.mastery);
-                ctx.shadowBlur = 15 / globalScale;
+                ctx.shadowBlur = (isHovered ? 25 : 15) / globalScale;
                 
                 // Draw Node Circle
                 ctx.fillStyle = getNodeColor(node.mastery);
                 ctx.beginPath();
-                ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+                ctx.arc(drawX, drawY, radius, 0, 2 * Math.PI, false);
                 ctx.fill();
 
                 // Reset shadow for text
                 ctx.shadowBlur = 0;
 
-                // Draw Text Label
-                if (globalScale > 0.8) {
-                  ctx.font = `bold ${fontSize}px Inter, system-ui, Sans-Serif`;
-                  ctx.textAlign = 'center';
-                  ctx.textBaseline = 'middle';
-                  ctx.fillStyle = getLabelColor();
-                  ctx.fillText(label, node.x, node.y + radius + fontSize + 2);
+                // Draw Text Label INSIDE
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // Determine text color for contrast
+                const isDarkTheme = theme === 'dark';
+                const isMutedGray = node.mastery === 0; // Mastery 0 is gray
+                
+                if (isMutedGray && isDarkTheme) {
+                  ctx.fillStyle = '#ffffff'; // White text on dark gray nodes in dark mode
+                } else if (isMutedGray && !isDarkTheme) {
+                  ctx.fillStyle = '#0f1319'; // Dark text on light gray nodes in light mode
+                } else {
+                  // For neon colors (emerald, yellow, red), dark text usually looks sharpest and most modern
+                  ctx.fillStyle = '#111827'; 
                 }
+                
+                ctx.fillText(label, drawX, drawY);
               }}
             />
           ) : (
