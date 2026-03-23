@@ -9,7 +9,8 @@ const practiceSchema = new mongoose.Schema(
     options: [{ type: String }],
     correctAnswerIndex: { type: Number, default: 0 },
     selectedAnswerIndex: { type: Number, default: null },
-    isCorrect: { type: Boolean, default: null }
+    isCorrect: { type: Boolean, default: null },
+    course: { type: String, enum: ["jee", "neet", "upsc"], default: "jee" }
   },
   { timestamps: true }
 );

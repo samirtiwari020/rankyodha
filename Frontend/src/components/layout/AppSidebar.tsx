@@ -35,12 +35,7 @@ const navItems = [
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
 ];
 
-const toolItems = [
-  { title: "AI One-Pager", url: "/one-pager", icon: FileText },
-  { title: "AI Interviewer", url: "/interview", icon: MessageSquare },
-  { title: "Notes", url: "/notes", icon: FileText },
-  { title: "Gamification", url: "/gamification", icon: Trophy },
-];
+
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -105,18 +100,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <SidebarGroup>
-          {!collapsed && (
-            <SidebarGroupLabel className="text-muted-foreground/50 text-[10px] uppercase tracking-[0.15em] font-semibold px-3 mb-1">
-              Tools
-            </SidebarGroupLabel>
-          )}
-          <SidebarGroupContent>
-            <SidebarMenu className="space-y-0.5">
-              {renderNavItems(toolItems)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
         
         {/* Course Selector Panel */}
         {!collapsed && <CourseSelectorPanel />}
