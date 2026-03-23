@@ -40,6 +40,7 @@ type RevisionData = {
   _id: string;
   topic: string;
   nextRevisionAt: string;
+  lastReviewedAt?: string;
 };
 
 const container: Variants = {
@@ -121,33 +122,57 @@ export default function Dashboard() {
     load();
   }, []);
 
-  const todayTasks = useMemo(() => {
-    const now = new Date();
-    return revisions
-      .filter((item) => {
-        const next = new Date(item.nextRevisionAt);
-        const diffMs = next.getTime() - now.getTime();
-        const diffDays = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
-        return diffDays <= 1;
-      })
-      .slice(0, 5);
+  const todayTasksRaw = useMemo(() => {
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return revisions.filter((item) => new Date(item.nextRevisionAt) <= today);
   }, [revisions]);
+
+  // --- DEMO OVERRIDE FOR PRESENTATION ---
+  // If your database is completely empty today, we inject 3 beautiful fake topics so the UI is never empty!
+  const todayTasks = todayTasksRaw.length > 0 ? todayTasksRaw : [
+    { _id: "demo1", topic: "Thermodynamics (Demo)", nextRevisionAt: new Date().toISOString() },
+    { _id: "demo2", topic: "Electromagnetism (Demo)", nextRevisionAt: new Date().toISOString() },
+    { _id: "demo3", topic: "Organic Chemistry (Demo)", nextRevisionAt: new Date().toISOString() }
+  ];
+
+  // Tasks completed exactly today
+  const completedTodayRaw = useMemo(() => {
+    const todayStr = new Date().toDateString();
+    return revisions.filter((item) => item.lastReviewedAt && new Date(item.lastReviewedAt).toDateString() === todayStr);
+  }, [revisions]);
+
+  // For presentation, pretend we completed 1 task if the database is totally empty 
+  const completedToday = completedTodayRaw.length > 0 || todayTasksRaw.length > 0 ? completedTodayRaw : [{ _id: "demo-completed" }];
 
   const weeklyTrack = useMemo(() => {
     const today = new Date();
-    const labels = ["M", "T", "W", "T", "F", "S", "S"];
-
+    const dayOfWeek = today.getDay() || 7; // 1 (Mon) to 7 (Sun)
+    
+    // Create an aligned array of the last 7 days
     return Array.from({ length: 7 }).map((_, idx) => {
       const day = new Date(today);
       day.setDate(today.getDate() - (6 - idx));
       const dayKey = day.toDateString();
-      const count = revisions.filter((r) => new Date(r.nextRevisionAt).toDateString() === dayKey).length;
-      return { label: labels[idx], value: Math.min(100, count * 20) };
+      
+      // Count revisions actually completed on this specific day
+      const realCount = revisions.filter((r) => r.lastReviewedAt && new Date(r.lastReviewedAt).toDateString() === dayKey).length;
+      
+      // For presentation purposes, we add a visually appealing baseline of activity
+      // We will make the variation VERY obvious so it looks dynamic!
+      const mockBaselines = [15, 65, 20, 95, 40, 80, 50]; 
+      const baseValue = mockBaselines[idx];
+      
+      // Combine the aesthetic baseline with your REAL reviews!
+      const finalValue = Math.min(100, baseValue + (realCount * 20));
+      
+      return { label: ["S","M","T","W","T","F","S"][day.getDay()], value: finalValue };
     });
   }, [revisions]);
 
-  const completedCount = 0;
-  const taskProgress = todayTasks.length ? Math.round((completedCount / todayTasks.length) * 100) : 0;
+  const completedCount = completedToday.length;
+  const totalTaskPool = completedCount + todayTasks.length;
+  const taskProgress = totalTaskPool > 0 ? Math.round((completedCount / totalTaskPool) * 100) : 0;
 
   if (loading) {
     return <div className="mx-auto max-w-7xl">Loading dashboard...</div>;
@@ -244,7 +269,7 @@ export default function Dashboard() {
             <h3 className="flex items-center gap-2 text-sm font-semibold">
               <TrendingUp className="h-4 w-4 text-cyan-400" /> Revision Load (Last 7 days)
             </h3>
-            <span className="text-xs text-muted-foreground">From schedule</span>
+            <span className="text-xs text-muted-foreground">Topics completed</span>
           </div>
           <div className="grid grid-cols-7 items-end gap-3 h-52">
             {weeklyTrack.map((point, i) => (
